@@ -1,0 +1,93 @@
+[
+  {
+    "id": "hist-001",
+    "perfumeId": "perf-B014",
+    "perfumeCode": "B014",
+    "perfumeName": "Sauvage",
+    "numberOfOils": 1,
+    "bottleSize": 36,
+    "concentration": 30,
+    "oilMl": 10.8,
+    "oilGrams": 10.8,
+    "alcoholMl": 25.2,
+    "alcoholGrams": 19.88,
+    "oilDensity": 1,
+    "alcoholDensity": 0.789,
+    "totalVolume": 36,
+    "price": 65,
+    "priceCategory": "B",
+    "highestCategory": "B",
+    "bottleType": "36ml Standard",
+    "customerName": "Karim Bennani",
+    "batchNumber": "BATCH-2026-08A",
+    "notes": "Signature Eau de Parfum mix",
+    "salesManId": "sm-001",
+    "salesManName": "Ahmed El Mansouri",
+    "createdAt": "2026-10-31T07:57:29.674Z"
+  },
+  {
+    "id": "hist-002",
+    "perfumeId": "perf-D002+perf-A014",
+    "perfumeCode": "D002+A014",
+    "perfumeName": "2 Oils Blend: Aventus (60%) + Invictus (40%)",
+    "mode": "dual",
+    "numberOfOils": 2,
+    "highestCategory": "D",
+    "oils": [
+      {
+        "perfumeId": "perf-D002",
+        "perfumeCode": "D002",
+        "perfumeName": "Aventus",
+        "category": "D",
+        "allocationPercent": 60,
+        "oilMl": 11.55,
+        "oilGrams": 11.55
+      },
+      {
+        "perfumeId": "perf-A014",
+        "perfumeCode": "A014",
+        "perfumeName": "Invictus",
+        "category": "A",
+        "allocationPercent": 40,
+        "oilMl": 7.7,
+        "oilGrams": 7.7
+      }
+    ],
+    "oil1": {
+      "perfumeId": "perf-D002",
+      "perfumeCode": "D002",
+      "perfumeName": "Aventus",
+      "category": "D",
+      "allocationPercent": 60,
+      "oilMl": 11.55,
+      "oilGrams": 11.55
+    },
+    "oil2": {
+      "perfumeId": "perf-A014",
+      "perfumeCode": "A014",
+      "perfumeName": "Invictus",
+      "category": "A",
+      "allocationPercent": 40,
+      "oilMl": 7.7,
+      "oilGrams": 7.7
+    },
+    "bottleSize": 55,
+    "concentration": 35,
+    "oilMl": 19.25,
+    "oilGrams": 19.25,
+    "alcoholMl": 35.75,
+    "alcoholGrams": 28.21,
+    "oilDensity": 1,
+    "alcoholDensity": 0.789,
+    "totalVolume": 55,
+    "price": 145,
+    "priceCategory": "D",
+    "bottleType": "55ml Unpolish",
+    "customerName": "Yassine Alami",
+    "batchNumber": "BATCH-2026-08B",
+    "notes": "Custom 2-oil VIP blend with Category D pricing",
+    "salesManId": "sm-002",
+    "salesManName": "Youssef Alami",
+    "createdAt": "2026-10-30T21:57:29.674Z"
+  }
+]
