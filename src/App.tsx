@@ -34,6 +34,7 @@ import {
   updateSalesMan,
   deleteSalesMan,
   initStorageSync,
+  syncAllDataWithServer,
 } from './services/storage';
 import { fetchOilRecords, getCachedOilRecords, saveCachedOilRecords } from './services/oilService';
 import { Perfume, MixingFormula, AppSettings, PageId, ExtractedPerfume, SalesMan } from './types';
@@ -137,11 +138,58 @@ export function App() {
       (serverSalesmen) => setSalesmen(serverSalesmen)
     );
 
+    // 4. Multi-session synchronization: lightweight polling interval (every 12 seconds)
+    const syncInterval = setInterval(() => {
+      syncAllDataWithServer().catch((err) => {
+        console.warn('Interval background sync warning:', err);
+      });
+    }, 12000);
+
+    // 5. Multi-session synchronization: refresh immediately on window focus and tab visibility change
+    const handleFocusSync = () => {
+      syncAllDataWithServer().catch((err) => {
+        console.warn('Window focus sync warning:', err);
+      });
+    };
+
+    const handleVisibilitySync = () => {
+      if (document.visibilityState === 'visible') {
+        syncAllDataWithServer().catch((err) => {
+          console.warn('Tab visibility sync warning:', err);
+        });
+      }
+    };
+
+    window.addEventListener('focus', handleFocusSync);
+    document.addEventListener('visibilitychange', handleVisibilitySync);
+
+    // 6. Cross-tab storage synchronization within the same browser
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (!e.key) {
+        setHistory(getHistory());
+        setPerfumes(getPerfumes());
+        setSalesmen(getSalesMen());
+        return;
+      }
+      if (e.key === 'kprime_mixing_history_v1') {
+        setHistory(getHistory());
+      } else if (e.key === 'kprime_perfumes_v1') {
+        setPerfumes(getPerfumes());
+      } else if (e.key === 'kprime_salesmen_v1') {
+        setSalesmen(getSalesMen());
+      }
+    };
+    window.addEventListener('storage', handleStorageEvent);
+
     return () => {
       window.removeEventListener('perfume_history_updated', handleHistoryUpdate);
       window.removeEventListener('perfume_db_updated', handlePerfumesUpdate);
       window.removeEventListener('perfume_salesmen_updated', handleSalesmenUpdate);
       window.removeEventListener('perfume_settings_updated', handleSettingsUpdate);
+      window.removeEventListener('storage', handleStorageEvent);
+      clearInterval(syncInterval);
+      window.removeEventListener('focus', handleFocusSync);
+      document.removeEventListener('visibilitychange', handleVisibilitySync);
     };
   }, []);
 

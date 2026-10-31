@@ -1,5 +1,6 @@
 import { Perfume, MixingFormula, AppSettings, SalesMan, SimilarSearchHistoryItem } from '../types';
 import { DEFAULT_PERFUMES } from '../data/defaultPerfumes';
+import { fetchOilRecords } from './oilService';
 
 const STORAGE_KEYS = {
   PERFUMES: 'kprime_perfumes_v1',
@@ -483,7 +484,7 @@ export function getHistory(): MixingFormula[] {
 
     if (!raw) return INITIAL_SAMPLE_HISTORY;
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (Array.isArray(parsed)) {
       return parsed;
     }
     return INITIAL_SAMPLE_HISTORY;
@@ -616,34 +617,29 @@ export async function initStorageSync(
   onSalesMenUpdate?: (salesmen: SalesMan[]) => void
 ): Promise<void> {
   try {
-    // 1. Reconcile Mixing History
+    // 1. Reconcile Mixing History with Cloudflare D1 / backend storage
     const hasLocalHistory = safeGetItem(STORAGE_KEYS.HISTORY) !== null || LEGACY_HISTORY_KEYS.some(k => safeGetItem(k) !== null);
     const localHistory = getHistory();
     try {
-      const res = await fetch('/api/history');
+      let res = await fetch('/api/mixes');
+      if (!res.ok) res = await fetch('/api/history');
       if (res.ok) {
         const data = await res.json();
-        if (data && Array.isArray(data.history) && data.history.length > 0) {
-          // Merge local and server history by id without duplicates
-          const map = new Map<string, MixingFormula>();
-          data.history.forEach((h: MixingFormula) => {
-            if (h && h.id) map.set(h.id, h);
-          });
-          if (hasLocalHistory) localHistory.forEach((h: MixingFormula) => {
-            if (h && h.id) map.set(h.id, h);
-          });
-          const merged = Array.from(map.values()).sort((a, b) => {
-            return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-          });
-          safeSetItem(STORAGE_KEYS.HISTORY, JSON.stringify(merged));
-          if (onHistoryUpdate) onHistoryUpdate(merged);
-        } else if (hasLocalHistory && localHistory.length > 0) {
-          // Push local history to server
-          fetch('/api/history/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ history: localHistory }),
-          }).catch(() => {});
+        if (data && Array.isArray(data.history)) {
+          if (data.history.length > 0) {
+            safeSetItem(STORAGE_KEYS.HISTORY, JSON.stringify(data.history));
+            if (onHistoryUpdate) onHistoryUpdate(data.history);
+          } else if (hasLocalHistory && localHistory.length > 0) {
+            // First time seeding empty server
+            fetch('/api/history/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ history: localHistory }),
+            }).catch(() => {});
+          } else {
+            safeSetItem(STORAGE_KEYS.HISTORY, JSON.stringify([]));
+            if (onHistoryUpdate) onHistoryUpdate([]);
+          }
         }
       }
     } catch {
@@ -698,17 +694,8 @@ export async function initStorageSync(
       if (res.ok) {
         const data = await res.json();
         if (data && Array.isArray(data.salesmen) && data.salesmen.length > 0) {
-          // Merge salesmen by id
-          const map = new Map<string, SalesMan>();
-          data.salesmen.forEach((s: SalesMan) => {
-            if (s && s.id) map.set(s.id, s);
-          });
-          if (hasLocalSalesMen) localSalesMen.forEach((s: SalesMan) => {
-            if (s && s.id) map.set(s.id, s);
-          });
-          const merged = Array.from(map.values());
-          safeSetItem(STORAGE_KEYS.SALESMEN, JSON.stringify(merged));
-          if (onSalesMenUpdate) onSalesMenUpdate(merged);
+          safeSetItem(STORAGE_KEYS.SALESMEN, JSON.stringify(data.salesmen));
+          if (onSalesMenUpdate) onSalesMenUpdate(data.salesmen);
         } else if (hasLocalSalesMen && localSalesMen.length > 0) {
           fetch('/api/salesmen/sync', {
             method: 'POST',
@@ -721,6 +708,97 @@ export async function initStorageSync(
   } catch (err) {
     console.error('initStorageSync error:', err);
   }
+}
+
+/**
+ * Multi-session background synchronization helpers
+ */
+export async function fetchRemoteHistory(): Promise<MixingFormula[] | null> {
+  try {
+    let res = await fetch('/api/mixes');
+    if (!res.ok) res = await fetch('/api/history');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.history)) {
+        const serverHistory: MixingFormula[] = data.history;
+        const currentLocal = getHistory();
+
+        const isDifferent =
+          currentLocal.length !== serverHistory.length ||
+          currentLocal.some((item, idx) => item.id !== serverHistory[idx]?.id);
+
+        if (isDifferent) {
+          safeSetItem(STORAGE_KEYS.HISTORY, JSON.stringify(serverHistory));
+          window.dispatchEvent(new CustomEvent('perfume_history_updated', { detail: serverHistory }));
+        }
+        return serverHistory;
+      }
+    }
+  } catch (err) {
+    console.warn('Multi-session sync: failed to fetch remote mixing history:', err);
+  }
+  return null;
+}
+
+export async function fetchRemotePerfumes(): Promise<Perfume[] | null> {
+  try {
+    const res = await fetch('/api/perfumes');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.perfumes)) {
+        const serverPerfumes: Perfume[] = data.perfumes;
+        const currentLocal = getPerfumes();
+
+        const isDifferent =
+          currentLocal.length !== serverPerfumes.length ||
+          currentLocal.some((p, idx) => p.id !== serverPerfumes[idx]?.id || p.name !== serverPerfumes[idx]?.name);
+
+        if (isDifferent) {
+          safeSetItem(STORAGE_KEYS.PERFUMES, JSON.stringify(serverPerfumes));
+          window.dispatchEvent(new CustomEvent('perfume_db_updated', { detail: serverPerfumes }));
+        }
+        return serverPerfumes;
+      }
+    }
+  } catch (err) {
+    console.warn('Multi-session sync: failed to fetch remote perfumes:', err);
+  }
+  return null;
+}
+
+export async function fetchRemoteSalesMen(): Promise<SalesMan[] | null> {
+  try {
+    const res = await fetch('/api/salesmen');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.salesmen)) {
+        const serverSalesmen: SalesMan[] = data.salesmen;
+        const currentLocal = getSalesMen();
+
+        const isDifferent =
+          currentLocal.length !== serverSalesmen.length ||
+          currentLocal.some((s, idx) => s.id !== serverSalesmen[idx]?.id || s.name !== serverSalesmen[idx]?.name);
+
+        if (isDifferent) {
+          safeSetItem(STORAGE_KEYS.SALESMEN, JSON.stringify(serverSalesmen));
+          window.dispatchEvent(new CustomEvent('perfume_salesmen_updated', { detail: serverSalesmen }));
+        }
+        return serverSalesmen;
+      }
+    }
+  } catch (err) {
+    console.warn('Multi-session sync: failed to fetch remote salesmen:', err);
+  }
+  return null;
+}
+
+export async function syncAllDataWithServer(): Promise<void> {
+  await Promise.allSettled([
+    fetchRemoteHistory(),
+    fetchOilRecords(),
+    fetchRemotePerfumes(),
+    fetchRemoteSalesMen(),
+  ]);
 }
 
 // --- Full Database JSON Backup and Restore ---

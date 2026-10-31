@@ -93,7 +93,7 @@ export function getCachedOilRecords(): OilRecord[] {
       return DEFAULT_SAMPLE_OIL_RECORDS;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_SAMPLE_OIL_RECORDS;
+    return Array.isArray(parsed) ? parsed : DEFAULT_SAMPLE_OIL_RECORDS;
   } catch (err) {
     console.error('Failed reading cached oil records:', err);
     return DEFAULT_SAMPLE_OIL_RECORDS;
@@ -113,14 +113,28 @@ export function saveCachedOilRecords(records: OilRecord[]): void {
  * Fetch records from API (`GET /api/oil-records`)
  * Falls back to local cached records if offline or error
  */
-export async function fetchOilRecords(): Promise<OilRecord[]> {
+export async function fetchOilRecords(force = false): Promise<OilRecord[]> {
   try {
     const res = await fetch('/api/oil-records');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data && Array.isArray(data.records)) {
-      saveCachedOilRecords(data.records);
-      return data.records;
+      const current = getCachedOilRecords();
+      const newRecords: OilRecord[] = data.records;
+      const hasChanged =
+        force ||
+        current.length !== newRecords.length ||
+        current.some(
+          (r, i) =>
+            r.id !== newRecords[i]?.id ||
+            r.quantity !== newRecords[i]?.quantity ||
+            r.amount !== newRecords[i]?.amount
+        );
+
+      if (hasChanged) {
+        saveCachedOilRecords(newRecords);
+      }
+      return newRecords;
     }
   } catch (err) {
     console.warn('Backend fetch /api/oil-records failed, using local cache:', err);
